@@ -2,12 +2,12 @@
 
 namespace common\modules\attachment\models;
 
+use common\helpers\StringHelper;
 use common\modules\attachment\components\UploadedFile;
 use Yii;
 use yii\behaviors\BlameableBehavior;
 use yii\behaviors\TimestampBehavior;
 use yii\helpers\FileHelper;
-use yii\helpers\StringHelper;
 
 /**
  * This is the model class for table '{{%attachment}}'.
@@ -22,7 +22,6 @@ use yii\helpers\StringHelper;
  * @property string $hash
  * @property integer $size
  * @property string $type
- * @property string $disk
  * @property integer $created_at
  * @property integer $updated_at
  * @property string $url
@@ -46,8 +45,7 @@ class Attachment extends \yii\db\ActiveRecord
             [['path', 'hash'], 'required'],
             [['user_id', 'size'], 'integer'],
             [['name', 'title', 'description', 'type', 'extension'], 'string', 'max' => 255],
-            [['hash'], 'string', 'max' => 64],
-            [['disk'], 'string', 'max' => 50]
+            [['hash'], 'string', 'max' => 64]
         ];
     }
 
@@ -65,7 +63,6 @@ class Attachment extends \yii\db\ActiveRecord
             'hash' => 'Hash',
             'size' => 'Size',
             'type' => 'Type',
-            'disk' => '文件存储驱动',
             'created_at' => 'Created At',
             'updated_at' => 'Updated At',
         ];
@@ -114,29 +111,25 @@ class Attachment extends \yii\db\ActiveRecord
     {
         $width = (int) $width;
         $height = (int) $height;
-        return Yii::$app->storage->disk($this->disk)->thumbnail($this->path, $width, $height);
+        return Yii::$app->storage->thumbnail($this->path, $width, $height);
     }
 
     public function afterDelete()
     {
         parent::afterDelete();
         // 文件删了
-        if (Yii::$app->storage->disk($this->disk)->has($this->path)) {
-            Yii::$app->storage->disk($this->disk)->delete($this->path);
+        if (Yii::$app->storage->has($this->path)) {
+            Yii::$app->storage->delete($this->path);
         }
     }
 
     /**
      * @param $hash
-     * @param $disk
      * @return static|null
      */
-    public static function findByHash($hash, $disk = null)
+    public static function findByHash($hash)
     {
-        if ($disk === null) {
-            $disk = Yii::$app->storage->defaultDriver;
-        }
-        return static::findOne(['hash' => $hash, 'disk' => $disk]);
+        return static::findOne(['hash' => $hash]);
     }
 
     /**
@@ -147,27 +140,18 @@ class Attachment extends \yii\db\ActiveRecord
      */
     public static function uploadFromPost($path, $file)
     {
-        $hash = md5_file($file->tempName);
-        $attachment = static::findByHash($hash);
-        if (empty($attachment)) {
-            if ($file->extension) {
-                // 用hash当文件名,方便根据文件名查找
-                $file->name = $hash . '.' . $file->extension;
-            }
-//            p($file->tempName);
-            if ($filePath = Yii::$app->storage->putFile($path, $file)) {
-                $attachment = new static();
-                $attachment->path = $filePath;
-                $attachment->name = $file->hashName;
-                $attachment->extension = $file->extension;
-                $attachment->type = $file->type;
-                $attachment->size = $file->size;
-                $attachment->hash = $hash;
-                $attachment->save();
-            } else {
-                throw new \Exception('上传失败');
-            }
-        }
+        $filePath = $file->store($path);
+        $attachment = new Attachment();
+        $attachment->attributes = [
+            'name' => $file->name,
+            'hash' => $file->getHashName(),
+            'url' => Yii::$app->storage->getUrl($filePath),
+            'path' => $filePath,
+            'extension' => $file->extension,
+            'type' => $file->type,
+            'size' => $file->size
+        ];
+        $attachment->save();
         return $attachment;
     }
 
@@ -178,31 +162,29 @@ class Attachment extends \yii\db\ActiveRecord
      */
     public static function uploadFromUrl($path, $url)
     {
-        $hash = md5(file_get_contents($url));
-        $attachment = static::findByHash($hash);
         $tempFile = Yii::$app->storage->disk('local')->put($path, file_get_contents($url));
         $mimeType = FileHelper::getMimeType($tempFile);
         $extension = current(FileHelper::getExtensionsByMimeType($mimeType, '@common/helpers/mimeTypes.php'));
-        if (empty($attachment)) {
-            $fileName = $hash . '.' . $extension;
-            $filePath = ($path ? ($path . '/') : '') . $fileName;
-            $fileSize = filesize($tempFile);
-            if (Yii::$app->storage->upload($filePath, $tempFile)) {
-                @unlink($tempFile);
-                $attachment = new static();
-                $attachment->path = $filePath;
-                $attachment->name = $fileName;
-                $attachment->extension = $extension;
-                $attachment->type = $mimeType;
-                $attachment->size = $fileSize;
-                $attachment->hash = $hash;
-                $attachment->save();
-            } else {
-                return [null, '上传失败'];
-            }
+        $hash = StringHelper::random(40);
+        $fileName = $hash . '.' . $extension;
+        $filePath = ($path ? ($path . '/') : '') . $fileName;
+        $fileSize = filesize($tempFile);
+        if (Yii::$app->storage->upload($filePath, $tempFile)) {
+            @unlink($tempFile);
+            $attachment = new static();
+            $attachment->path = $filePath;
+            $attachment->name = $fileName;
+            $attachment->extension = $extension;
+            $attachment->type = $mimeType;
+            $attachment->size = $fileSize;
+            $attachment->hash = $hash;
+            $attachment->save();
+        } else {
+            return [null, '上传失败'];
         }
         return [$attachment, null];
     }
+
     public function makeCropStorage($width, $height, $x, $y)
     {
         $url = Yii::$app->storage->crop($this->path, $width, $height, [$x, $y]);

@@ -16,7 +16,9 @@ use common\modules\attachment\widgets\SingleWidget;
 ?>
     <?php $form = ActiveForm::begin([
         'enableClientValidation' => false,
-        'enableAjaxValidation' => true
+        'enableAjaxValidation' => true,
+        'validateOnBlur' => false,
+        'validateOnChange' => false
     ]); ?>
         <div class="nav-tabs-custom">
             <ul class="nav nav-tabs">

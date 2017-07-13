@@ -19,7 +19,9 @@ $this->title = '路由规则';
 $this->params['breadcrumbs'][] = $this->title;
 
 ?>
-
+<div class="alert alert-warning">
+    需先让apache或nginx支持伪静态，然后模块管理urlrule模块配置开启url美化
+</div>
 <div class="row">
 	<div class="col-md-4">
 		<?= $this->render('_form', ['model' => $model]) ?>

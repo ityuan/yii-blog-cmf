@@ -103,26 +103,36 @@ $this->params['breadcrumbs'][] = $this->title;
             $export.parent().children().addClass("disabled");
             $export.html("正在发送备份请求...");
             var that = this;
-            $.post(
-                $form.attr("action"),
-                $form.serialize(),
-                function(data){
-                    if(data.status){
+            $.ajax({
+                url: $form.attr("action"),
+                data: $form.serialize(),
+                method: 'post',
+                dataType: 'json',
+                success: function (data) {
+                    if (data.status) {
                         tables = data.tables;
                         $export.html(data.info + "开始备份，请不要关闭本页面！");
                         backup.call(that, data.tab);
-                        window.onbeforeunload = function(){ return "正在备份数据库，请不要关闭！" }
+                        window.onbeforeunload = function () {
+                            return "正在备份数据库，请不要关闭！"
+                        }
                     } else {
                         $.modal.error(data.info);
                         $export.parent().children().removeClass("disabled");
                         $export.html("立即备份");
-                        setTimeout(function(){
-                            $(that).removeClass('disabled').prop('disabled',false);
-                        },1500);
+                        setTimeout(function () {
+                            $(that).removeClass('disabled').prop('disabled', false);
+                        }, 1500);
                     }
                 },
-                "json"
-            );
+                error: function () {
+                    $export.parent().children().removeClass("disabled");
+                    $export.html("立即备份");
+                    setTimeout(function () {
+                        $(that).removeClass('disabled').prop('disabled', false);
+                    }, 1500);
+                }
+            });
             return false;
         });
 
